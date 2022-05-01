@@ -146,7 +146,7 @@ def vrp3(locations, d, C):
     model.addConstrs(x.sum(i, '*', k) == y[i, k] for i in range(n) for k in range(K))
     model.addConstrs(u[i, k] - u[j, k] + C[k]*x[i, j, k] <= C[k] - d[j]
                      for i in range(1, n) for j in range(1, n) for k in range(K)
-                     if i != j and d[i] + d[j] <= C[k])
+                     if i != j)
     model.addConstrs(d[i] <= u[i, k] for i in range(1, n) for k in range(K))
     model.addConstrs(u[i, k] <= C[k] for i in range(1, n) for k in range(K))
 
