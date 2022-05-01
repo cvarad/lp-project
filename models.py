@@ -121,7 +121,7 @@ def vrp1(locations, d, C):
     model.setObjective(gp.quicksum(
         distance_matrix[i][j]*x[i, j] for i in range(n) for j in range(n)), gp.GRB.MINIMIZE)
     model.optimize()
-    return process_result(model, x)
+    return process_result(model, locations, x)
     
 
 def vrp3(locations, d, C):
