@@ -24,16 +24,12 @@ def get_model_status(model):
 
 def create_route_matrix(x, n, model=None):
     route_matrix = [[] for _ in range(n)]
-    # for j in range(n):
-    #     if x[0, j].X == 1:
-    #         route_matrix[0].append(j)
-
     if model == 'vrp4':
         for i in range(n):
-            for j in range(i+1, n):
+            for j in range(i+1, n+1):
                 if x[i, j].X == 1 or x[j, i].X == 1:
-                    route_matrix[i].append(j)
-                    route_matrix[j].append(i)
+                    route_matrix[i].append(j%n)
+                    route_matrix[j%n].append(i)
         for j in range(n):
             if x[n, j].X == 1 or x[j, n].X == 1:
                 route_matrix[0].append(j)
@@ -45,6 +41,7 @@ def create_route_matrix(x, n, model=None):
                     route_matrix[i].append(j)
         
 
+    print(route_matrix)
     return route_matrix
 
 def get_routes(x, locations, model=None):
@@ -75,9 +72,9 @@ def get_routes(x, locations, model=None):
 def modify_distance_matrix(distance_matrix, model=None):
     if model == 'vrp4':
         # Force a symmetric distance matrix
-        # for i in range(1, len(distance_matrix)):
-        #     for j in range(i+1):
-        #         distance_matrix[i][j] = distance_matrix[j][i]
+        for i in range(1, len(distance_matrix)):
+            for j in range(i+1):
+                distance_matrix[i][j] = distance_matrix[j][i]
 
         for row in distance_matrix:
             row.append(row[0])
@@ -123,13 +120,13 @@ def vrp1(locations, d, C):
         'routes': routes
     }
 
+def vrp3(locations, d, C):
+    if type(C) == int:
+        C = [C]*ceil(sum(d)/C)
 
 def vrp4(locations, d, C):
-    # distance_matrix = locations
     distance_matrix, _ = generate_distance_matrix(locations)
     modify_distance_matrix(distance_matrix, 'vrp4')
-    # print(distance_matrix)
-    # print(locations)
 
     n = len(distance_matrix)
     K = ceil(sum(d)/C)
@@ -239,5 +236,5 @@ if __name__ == '__main__':
         ],
     ]
     d = [0, 1, 1, 2, 4, 2, 4, 8, 8, 1, 2, 1, 2, 4, 4, 8, 8]
-    vrp4(distance_matrix, d, 15)
+    vrp1(distance_matrix, d, 15)
     pass
