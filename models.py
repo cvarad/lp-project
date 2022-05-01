@@ -67,11 +67,12 @@ def get_routes(x, locations, K=None, model=None):
                     processed[x] = True
                     break
 
-    routes = [routes[j] for j in routes]         
+    raw_routes = [[_ for _ in routes[j]] for j in routes]
+    routes = [routes[j] for j in routes] # dictionary to list 
     for route in routes:
         for j in range(len(route)):
             route[j] = locations[route[j]]
-    return routes
+    return routes, raw_routes
 
 def modify_distance_matrix(distance_matrix, model=None):
     if model == 'vrp4':
@@ -87,14 +88,21 @@ def modify_distance_matrix(distance_matrix, model=None):
     for i in range(len(distance_matrix)):
         distance_matrix[i][i] = INF
 
+def get_route_lengths(dm, routes):
+    lengths = []
+    for route in routes:
+        print(route)
+        lengths.append(sum(dm[route[i-1]][route[i]] for i in range(1, len(route))))
+    return lengths
 
-def process_result(model, locations, x, K=None, type=None):
+def process_result(model, locations, x, dm, K=None, type=None):
     status_str = get_model_status(model)
     if status_str != 'optimal':
         return {'status': status_str}
 
-    routes = get_routes(x, locations, K, type)
-    return {'status': status_str, 'routes': routes}
+    routes, raw_routes = get_routes(x, locations, K, type)
+    lengths = get_route_lengths(dm, raw_routes)
+    return {'status': status_str, 'routes': routes, 'lengths': lengths}
 
 def vrp1(locations, d, C):
     distance_matrix, _ = generate_distance_matrix(locations)
@@ -110,8 +118,8 @@ def vrp1(locations, d, C):
     # Add constraints
     model.addConstrs(x.sum('*', j) == 1 for j in range(1, n))  # indegree constraints
     model.addConstrs(x.sum(i, '*') == 1 for i in range(1, n))  # outdegree constraints
-    model.addConstr(x.sum('*', 0) == K)  # indegree depot
-    model.addConstr(x.sum(0, '*') == K)  # outdegree depot
+    model.addConstr(x.sum('*', 0) >= K)  # indegree depot
+    model.addConstr(x.sum(0, '*') >= K)  # outdegree depot
     model.addConstrs(u[i] - u[j] + C*x[i, j] <= C - d[j]
                      for i in range(1, n) for j in range(1, n)
                      if i != j)
@@ -121,7 +129,7 @@ def vrp1(locations, d, C):
     model.setObjective(gp.quicksum(
         distance_matrix[i][j]*x[i, j] for i in range(n) for j in range(n)), gp.GRB.MINIMIZE)
     model.optimize()
-    return process_result(model, locations, x)
+    return process_result(model, locations, x, distance_matrix)
     
 
 def vrp3(locations, d, C):
@@ -167,7 +175,7 @@ def vrp3(locations, d, C):
     #     for k in range(K):
     #         print((i, k), u[i, k].X)
 
-    return process_result(model, locations, x, K, 'vrp3')
+    return process_result(model, locations, x, distance_matrix, K, 'vrp3')
 
 
 def vrp4(locations, d, C):
@@ -193,7 +201,7 @@ def vrp4(locations, d, C):
         distance_matrix[i][j]*x[i, j] for i in range(n) for j in range(n)), gp.GRB.MINIMIZE)
     model.optimize()
 
-    return process_result(model, locations, x, K, 'vrp4')
+    return process_result(model, locations, x, distance_matrix, K, 'vrp4')
 
 if __name__ == '__main__':
     locations = [[40.013077638324305, -105.26256374597169], [40.017942042003895, -105.28642467736817],
