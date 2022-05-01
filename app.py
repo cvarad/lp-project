@@ -1,9 +1,10 @@
 from flask import Flask, request
 from flask_cors import CORS
-from models import vrp1
+from models import vrp1, vrp4
 
 app = Flask(__name__)
 CORS(app)
+solvers = {'vrp1': vrp1, 'vrp4': vrp4}
 
 @app.route('/')
 def index():
@@ -11,13 +12,11 @@ def index():
 
 @app.route('/solve/<model>', methods=['GET', 'POST'])
 def solve(model):
+    if model not in solvers:
+        return {'status': 'unknown model'}
+
     data = request.get_json()
-    if model == 'vrp1':
-        return vrp1(data['locations'], data['demands'], data['capacity'])
-    return {}
-    # return {
-    #     'routes': [[[40.008992173966995, -105.28547778746469], [40.00320668011718, -105.24633899351937]], [[40.008992173966995, -105.28547778746469], [40.00320668011718, -105.24633899351937]]]
-    # }
+    return solvers[model](data['locations'], data['demands'], data['capacity'])
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
