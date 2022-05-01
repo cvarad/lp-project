@@ -114,7 +114,7 @@ def vrp1(locations, d, C):
     model.addConstr(x.sum(0, '*') == K)  # outdegree depot
     model.addConstrs(u[i] - u[j] + C*x[i, j] <= C - d[j]
                      for i in range(1, n) for j in range(1, n)
-                     if i != j and d[i] + d[j] <= C)
+                     if i != j)
     model.addConstrs(d[i] <= u[i] for i in range(1, n))
     model.addConstrs(u[i] <= C for i in range(1, n))
 
@@ -127,6 +127,8 @@ def vrp1(locations, d, C):
 def vrp3(locations, d, C):
     if type(C) == int:
         C = [C]*ceil(sum(d)/C)
+
+    C = [i for i in C if i >= max(d)]
 
     distance_matrix, _ = generate_distance_matrix(locations)
     modify_distance_matrix(distance_matrix)
