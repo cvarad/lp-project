@@ -40,7 +40,8 @@ def create_route_matrix(x, n, model=None):
                 if x[i, j].X == 1:
                     route_matrix[i].append(j)
         
-
+    for i in range(len(route_matrix)):
+        route_matrix[i] = list(set(route_matrix[i]))
     print(route_matrix)
     return route_matrix
 
@@ -50,6 +51,8 @@ def get_routes(x, locations, model=None):
     routes = {j: [0, j] for j in route_matrix[0]}
     processed = [False]*n
     for j in range(n):
+        print(routes)
+
         if j not in routes: continue
         if processed[j]:
             routes.pop(j)
@@ -57,6 +60,10 @@ def get_routes(x, locations, model=None):
         processed[j] = True
         route = routes[j]
         while route[-1] != 0:
+            if len(route_matrix[route[-1]]) == 1:
+                route.append(route_matrix[route[-1]][0])
+                continue
+
             for x in route_matrix[route[-1]]:
                 if x != route[-2]:
                     route.append(x)
@@ -112,6 +119,11 @@ def vrp1(locations, d, C):
     status, status_str = get_model_status(model)
     if status != gp.GRB.OPTIMAL:
         return {'status': status_str}
+
+    for i in range(n):
+        for j in range(n):
+            if (x[i, j].X == 1):
+                print((i, j), x[i, j].X)
 
     routes = get_routes(x, locations)
     print(routes)
