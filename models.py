@@ -5,24 +5,17 @@ from distance_matrix import generate_distance_matrix
 
 INF = gp.GRB.INFINITY
 
-# def non_empty_powerset(l):
-#     return list(chain.from_iterable(combinations(l, r) for r in range(1, len(l)+1)))
-
-# def min_vehicles(s, d, C):
-#     return ceil(sum(d[i] for i in s)/C)
-
-
 def get_model_status(model):
     status = model.getAttr(gp.GRB.Attr.Status)
     status_str = 'optimal'
-    if status == gp.GRB.INFEASIBLE:
+    if status == gp.GRB.INFEASIBLE or model.getAttr(gp.GRB.Attr.ObjVal) >= INF:
         status_str = 'infeasible'
     elif status == gp.GRB.UNBOUNDED:
         status_str = 'unbounded'
 
-    return status, status_str
+    return status_str
 
-def create_route_matrix(x, n, model=None):
+def create_route_matrix(x, n, K=None, model=None):
     route_matrix = [[] for _ in range(n)]
     if model == 'vrp4':
         for i in range(n):
@@ -33,7 +26,12 @@ def create_route_matrix(x, n, model=None):
         for j in range(n):
             if x[n, j].X == 1 or x[j, n].X == 1:
                 route_matrix[0].append(j)
-
+    elif model == 'vrp3':
+        for k in range(K):
+            for i in range(n):
+                for j in range(n):
+                    if x[i, j, k].X == 1:
+                        route_matrix[i].append(j)
     else:
         for i in range(n):
             for j in range(n):
@@ -45,9 +43,9 @@ def create_route_matrix(x, n, model=None):
     print(route_matrix)
     return route_matrix
 
-def get_routes(x, locations, model=None):
+def get_routes(x, locations, K=None, model=None):
     n = len(locations)
-    route_matrix = create_route_matrix(x, n, model)
+    route_matrix = create_route_matrix(x, n, K, model)
     routes = {j: [0, j] for j in route_matrix[0]}
     processed = [False]*n
     for j in range(n):
@@ -63,7 +61,6 @@ def get_routes(x, locations, model=None):
             if len(route_matrix[route[-1]]) == 1:
                 route.append(route_matrix[route[-1]][0])
                 continue
-
             for x in route_matrix[route[-1]]:
                 if x != route[-2]:
                     route.append(x)
@@ -90,6 +87,15 @@ def modify_distance_matrix(distance_matrix, model=None):
     for i in range(len(distance_matrix)):
         distance_matrix[i][i] = INF
 
+
+def process_result(model, locations, x, K=None, type=None):
+    status_str = get_model_status(model)
+    if status_str != 'optimal':
+        return {'status': status_str}
+
+    routes = get_routes(x, locations, K, type)
+    return {'status': status_str, 'routes': routes}
+
 def vrp1(locations, d, C):
     distance_matrix, _ = generate_distance_matrix(locations)
     modify_distance_matrix(distance_matrix)
@@ -115,26 +121,52 @@ def vrp1(locations, d, C):
     model.setObjective(gp.quicksum(
         distance_matrix[i][j]*x[i, j] for i in range(n) for j in range(n)), gp.GRB.MINIMIZE)
     model.optimize()
-
-    status, status_str = get_model_status(model)
-    if status != gp.GRB.OPTIMAL:
-        return {'status': status_str}
-
-    for i in range(n):
-        for j in range(n):
-            if (x[i, j].X == 1):
-                print((i, j), x[i, j].X)
-
-    routes = get_routes(x, locations)
-    print(routes)
-    return {
-        'status': status_str,
-        'routes': routes
-    }
+    return process_result(model, x)
+    
 
 def vrp3(locations, d, C):
     if type(C) == int:
         C = [C]*ceil(sum(d)/C)
+
+    distance_matrix, _ = generate_distance_matrix(locations)
+    modify_distance_matrix(distance_matrix)
+    n = len(distance_matrix)
+    K = len(C)
+
+    model = gp.Model('3-index Vehicle Flow Model - ACVRP')
+    # Add variables
+    x = model.addVars(range(n), range(n), range(K),
+                      vtype=gp.GRB.BINARY, name='x')
+    y = model.addVars(range(n), range(K), vtype=gp.GRB.BINARY)
+    u = model.addVars(range(n), range(K), vtype=gp.GRB.CONTINUOUS)
+    # Add constraints
+    model.addConstrs(y.sum(i, '*') == 1 for i in range(1, n))
+    model.addConstr(y.sum(0, '*') == K)
+    model.addConstrs(x.sum(i, '*', k) == x.sum('*', i, k) for i in range(n) for k in range(K))
+    model.addConstrs(x.sum(i, '*', k) == y[i, k] for i in range(n) for k in range(K))
+    model.addConstrs(u[i, k] - u[j, k] + C[k]*x[i, j, k] <= C[k] - d[j]
+                     for i in range(1, n) for j in range(1, n) for k in range(K)
+                     if i != j and d[i] + d[j] <= C[k])
+    model.addConstrs(d[i] <= u[i, k] for i in range(1, n) for k in range(K))
+    model.addConstrs(u[i, k] <= C[k] for i in range(1, n) for k in range(K))
+
+
+    model.setObjective(gp.quicksum(distance_matrix[i][j]*sum(
+        x[i, j, k] for k in range(K)) for i in range(n) for j in range(n)), gp.GRB.MINIMIZE)
+    model.optimize()
+
+    # for i in range(n):
+    #     for j in range(n):
+    #         for k in range(K):
+    #             if (x[i, j, k].X == 1):
+    #                 print((i, j, k), x[i, j, k].X)
+    # print()
+    # for i in range(n):
+    #     for k in range(K):
+    #         print((i, k), u[i, k].X)
+
+    return process_result(model, locations, x, K, 'vrp3')
+
 
 def vrp4(locations, d, C):
     distance_matrix, _ = generate_distance_matrix(locations)
@@ -159,94 +191,11 @@ def vrp4(locations, d, C):
         distance_matrix[i][j]*x[i, j] for i in range(n) for j in range(n)), gp.GRB.MINIMIZE)
     model.optimize()
 
-    status, status_str = get_model_status(model)
-    if status != gp.GRB.OPTIMAL:
-        return {'status': status_str}
-
-    for i in range(n):
-        for j in range(n):
-            if (x[i, j].X == 1):
-                print((i, j), x[i, j].X)
-
-    routes = get_routes(x, locations, 'vrp4')
-    print(routes)
-    return {
-        'status': status_str,
-        'routes': routes
-    }
-
+    return process_result(model, locations, x, K, 'vrp4')
 
 if __name__ == '__main__':
-    distance_matrix = [
-        [
-            0, 548, 776, 696, 582, 274, 502, 194, 308, 194, 536, 502, 388, 354,
-            468, 776, 662
-        ],
-        [
-            548, 0, 684, 308, 194, 502, 730, 354, 696, 742, 1084, 594, 480, 674,
-            1016, 868, 1210
-        ],
-        [
-            776, 684, 0, 992, 878, 502, 274, 810, 468, 742, 400, 1278, 1164,
-            1130, 788, 1552, 754
-        ],
-        [
-            696, 308, 992, 0, 114, 650, 878, 502, 844, 890, 1232, 514, 628, 822,
-            1164, 560, 1358
-        ],
-        [
-            582, 194, 878, 114, 0, 536, 764, 388, 730, 776, 1118, 400, 514, 708,
-            1050, 674, 1244
-        ],
-        [
-            274, 502, 502, 650, 536, 0, 228, 308, 194, 240, 582, 776, 662, 628,
-            514, 1050, 708
-        ],
-        [
-            502, 730, 274, 878, 764, 228, 0, 536, 194, 468, 354, 1004, 890, 856,
-            514, 1278, 480
-        ],
-        [
-            194, 354, 810, 502, 388, 308, 536, 0, 342, 388, 730, 468, 354, 320,
-            662, 742, 856
-        ],
-        [
-            308, 696, 468, 844, 730, 194, 194, 342, 0, 274, 388, 810, 696, 662,
-            320, 1084, 514
-        ],
-        [
-            194, 742, 742, 890, 776, 240, 468, 388, 274, 0, 342, 536, 422, 388,
-            274, 810, 468
-        ],
-        [
-            536, 1084, 400, 1232, 1118, 582, 354, 730, 388, 342, 0, 878, 764,
-            730, 388, 1152, 354
-        ],
-        [
-            502, 594, 1278, 514, 400, 776, 1004, 468, 810, 536, 878, 0, 114,
-            308, 650, 274, 844
-        ],
-        [
-            388, 480, 1164, 628, 514, 662, 890, 354, 696, 422, 764, 114, 0, 194,
-            536, 388, 730
-        ],
-        [
-            354, 674, 1130, 822, 708, 628, 856, 320, 662, 388, 730, 308, 194, 0,
-            342, 422, 536
-        ],
-        [
-            468, 1016, 788, 1164, 1050, 514, 514, 662, 320, 274, 388, 650, 536,
-            342, 0, 764, 194
-        ],
-        [
-            776, 868, 1552, 560, 674, 1050, 1278, 742, 1084, 810, 1152, 274,
-            388, 422, 764, 0, 798
-        ],
-        [
-            662, 1210, 754, 1358, 1244, 708, 480, 856, 514, 468, 354, 844, 730,
-            536, 194, 798, 0
-        ],
-    ]
-    d = [0, 1, 1, 2, 4, 2, 4, 8, 8, 1, 2, 1, 2, 4, 4, 8, 8]
-    vrp1(distance_matrix, d, 15)
-    pass
+    locations = [[40.013077638324305, -105.26256374597169], [40.017942042003895, -105.28642467736817],
+                 [40.00755546262642, -105.279729883667], [40.003479284476946, -105.25535396813966],
+                 [40.02517227155021, -105.24883083581544]]
+    d = [0, 4, 2, 6, 5]
+    vrp1(locations, d, 15)

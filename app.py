@@ -1,10 +1,10 @@
 from flask import Flask, request
 from flask_cors import CORS
-from models import vrp1, vrp4
+from models import vrp1, vrp3, vrp4
 
 app = Flask(__name__)
 CORS(app)
-solvers = {'vrp1': vrp1, 'vrp4': vrp4}
+solvers = {'vrp1': vrp1, 'vrp3': vrp3, 'vrp4': vrp4}
 
 @app.route('/')
 def index():
